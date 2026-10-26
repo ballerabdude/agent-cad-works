@@ -109,4 +109,6 @@ Version 0.1.0. Tested on Ubuntu 24.04 with:
 | FreeCAD | 1.1.1 (snap) |
 | Blender | 4.5.15 LTS (OptiX on an RTX 5090) |
 
-Licence: not chosen yet (see [roadmap](docs/roadmap.md)).
+## Licence
+
+Apache License 2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE). Vendor CAD models are not included; download them from their makers into `vendor/`.

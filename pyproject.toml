@@ -3,6 +3,8 @@ name = "agent-cad-works"
 version = "0.1.0"
 description = "Agent-driven mechanical design: build123d parts, verification gates, slicing, FreeCAD exploded views and Blender photoreal renders."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12,<3.13"
 authors = [{ name = "Abdul Hagi" }]
 dependencies = [
