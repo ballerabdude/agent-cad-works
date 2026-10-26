@@ -1,0 +1,210 @@
+# agentcad: build the assembled and exploded FreeCAD documents of a design and render views of them.
+# Runs inside the FreeCAD GUI under Xvfb, started by agentcad.freecad (do not run by hand). Reads
+# __ROOT__/job.json and __ROOT__/manifest.json, writes FCStd documents, raw renders, ID passes and views.json.
+# Standard library + FreeCAD only: this file is executed by FreeCAD's own Python.
+import json
+import math
+import os
+import time
+import traceback
+
+import FreeCAD as App
+from PySide import QtWidgets
+import FreeCADGui as Gui
+import Part
+
+ROOT = "__ROOT__"                  # substituted by agentcad.freecad (a snap's ~ is the snap's own home)
+LOG = ROOT + "/explode.log"
+JOB = json.load(open(ROOT + "/job.json"))
+SCALE = JOB.get("scale", 3)          # render at SCALE x the viewport; the finishing step downsamples 2x
+COLORS = {"printed": ((0.93, 0.44, 0.10), False), "aluminium": ((0.80, 0.82, 0.85), True),
+          "steel": ((0.55, 0.58, 0.62), True), "chrome": ((0.75, 0.75, 0.77), True),
+          "black_oxide": ((0.22, 0.23, 0.25), True), "rubber": ((0.08, 0.08, 0.09), False),
+          "black": ((0.08, 0.08, 0.09), False), "bright": ((0.80, 0.82, 0.85), True), "seal": ((0.70, 0.10, 0.10), False)}
+
+
+def log(*a):
+    with open(LOG, "a") as f:
+        f.write(" ".join(str(x) for x in a) + "\n")
+
+
+def material(col, metal):
+    if metal:
+        return App.Material(DiffuseColor=tuple(col), AmbientColor=tuple(c * 0.35 for c in col),
+                            SpecularColor=(0.75, 0.75, 0.75), Shininess=0.55)
+    return App.Material(DiffuseColor=tuple(col), AmbientColor=tuple(c * 0.35 for c in col),
+                        SpecularColor=(0.18, 0.18, 0.18), Shininess=0.12)
+
+
+def build(man, exploded):
+    name = JOB["doc_name"] + ("_exploded" if exploded else "_assembled")
+    doc = App.newDocument(name)
+    grp = doc.addObject("App::DocumentObjectGroup", "Parts")
+    lines = doc.addObject("App::DocumentObjectGroup", "ExplosionLines") if exploded else None
+    shapes = {}
+    for p in man["parts"]:
+        s = Part.read(f"{ROOT}/parts/{p['step']}")
+        off = App.Vector(*p["explode"]) if exploded else App.Vector()
+        o = doc.addObject("Part::Feature", p["name"])
+        o.Shape = s
+        o.Placement = App.Placement(off, App.Rotation())
+        o.Label = p["label"] or p["name"]
+        grp.addObject(o)
+        shapes[p["name"]] = o
+        if exploded and p["label"] and (off.Length > 1e-6):
+            c = App.Vector(*p["center"])
+            ln = doc.addObject("Part::Feature", "line_" + p["name"])
+            ln.Shape = Part.LineSegment(c, c + off).toShape()
+            lines.addObject(ln)
+    doc.recompute()
+    for p in man["parts"]:
+        col, metal = COLORS.get(p["material"], ((0.6, 0.6, 0.6), False))
+        vo = shapes[p["name"]].ViewObject
+        vo.ShapeAppearance = (material(col, metal),)
+        vo.DisplayMode = "Flat Lines"
+        vo.LineColor = tuple(c * 0.45 for c in col)
+        vo.LineWidth = 1.0
+        vo.Deviation = 0.05
+        vo.AngularDeflection = 8.0
+    if exploded:
+        for ln in lines.Group:
+            ln.ViewObject.LineColor = (0.35, 0.37, 0.40)
+            ln.ViewObject.LineWidth = 2.0
+            ln.ViewObject.DrawStyle = "Dashed"
+    return doc
+
+
+def settle(n=30):
+    """Let queued redraws and any camera animation finish before measuring or saving."""
+    for _ in range(n):
+        Gui.updateGui()
+        time.sleep(0.03)
+
+
+def orient(view, d):
+    """Camera looking along d with world Z up on screen. Built as R_z(azimuth) * R_x(90 deg - elevation):
+    Coin's camera looks down its -Z with +Y up, R_x(90 - e) turns that into "look along +Y, tilted down by e,
+    Z up", and R_z swings the heading; neither step can roll the camera. The result is measured (view
+    direction and the screen lean of a world-vertical line) and logged; the inverse is tried in case
+    setCameraOrientation uses the opposite convention."""
+    d = App.Vector(*d).normalize()
+    e = math.degrees(math.asin(-d.z))
+    az = math.degrees(math.atan2(-d.x, d.y))
+    r = App.Rotation(App.Vector(0, 0, 1), az).multiply(App.Rotation(App.Vector(1, 0, 0), 90 - e))
+    best = None
+    for name, cand in (("direct", r), ("inverse", r.inverted())):
+        view.setCameraOrientation(cand)
+        settle()
+        view.fitAll()
+        settle()
+        vd = App.Vector(*view.getViewDirection())
+        c, zr = JOB["center"], JOB["z_range"]            # a world-vertical line through the model
+        p0 = view.getPointOnViewport(App.Vector(c[0], c[1], zr[0]))
+        p1 = view.getPointOnViewport(App.Vector(c[0], c[1], zr[1]))
+        lean = abs(p1[0] - p0[0]) / max(1.0, abs(p1[1] - p0[1]))
+        err = vd.getAngle(d) + lean
+        log("orient", name, "want", tuple(round(c, 3) for c in d), "got", tuple(round(c, 3) for c in vd),
+            "lean", round(lean, 4), "up_on_screen", p1[1] - p0[1])
+        if best is None or err < best[0]:
+            best = (err, cand, name, p1[1] - p0[1])
+    view.setCameraOrientation(best[1])
+    settle()
+    view.fitAll()
+    settle()
+    log("orient chosen", best[2], "err", round(best[0], 4))
+    return best[3] > 0          # True: viewport y grows upward
+
+
+def id_color(i):
+    """Unique flat colour per part for the ID pass (exact, because lighting contributes nothing)."""
+    return ((i + 1) * 12 / 255.0, (255 - (i + 1) * 12) / 255.0, 128 / 255.0)
+
+
+def id_pass(doc, man, v, out, w, h):
+    """Render every part in its ID colour (black diffuse/specular/ambient, emissive = ID), explosion lines
+    hidden; finish.py reads it to tell which sample points of a part are actually visible."""
+    saved = {}
+    for i, p in enumerate(man["parts"]):
+        vo = doc.getObject(p["name"]).ViewObject
+        saved[p["name"]] = (vo.ShapeAppearance, vo.DisplayMode)
+        vo.ShapeAppearance = (App.Material(DiffuseColor=(0, 0, 0), AmbientColor=(0, 0, 0), SpecularColor=(0, 0, 0),
+                                           EmissiveColor=id_color(i), Shininess=0.0),)
+        vo.DisplayMode = "Shaded"
+    lines = doc.getObject("ExplosionLines")
+    if lines:
+        for ln in lines.Group:
+            ln.ViewObject.Visibility = False
+    settle()
+    v.saveImage(out, w, h, "Black")
+    for name, (app, mode) in saved.items():
+        vo = doc.getObject(name).ViewObject
+        vo.ShapeAppearance, vo.DisplayMode = app, mode
+    if lines:
+        for ln in lines.Group:
+            ln.ViewObject.Visibility = True
+    settle()
+
+
+def render(doc, man, tag, d, ortho=True):          # orthographic: verticals stay vertical
+    Gui.updateGui()
+    Gui.setActiveDocument(doc.Name)
+    v = Gui.ActiveDocument.ActiveView
+    sub = Gui.getMainWindow().findChild(QtWidgets.QMdiArea).activeSubWindow()
+    if sub:
+        sub.showMaximized()
+    settle()
+    v.setCameraType("Orthographic" if ortho else "Perspective")
+    y_up = orient(v, d)
+    w, h = v.getSize()
+    log(tag, "viewport", w, h)
+    pts = {}
+    for i, p in enumerate(man["parts"]):
+        if not p["label"]:
+            continue
+        sh = doc.getObject(p["name"]).Shape
+        qs = [f.CenterOfMass for f in sh.Faces][:500] + [x.Point for x in sh.Vertexes][:500]
+        pts[p["name"]] = {"label": p["label"], "id": [round(c * 255) for c in id_color(i)],
+                          "center": list(v.getPointOnViewport(sh.BoundBox.Center)),
+                          "samples": [list(v.getPointOnViewport(q)) for q in qs]}
+    id_pass(doc, man, v, f"{ROOT}/render_{tag}_id.png", w, h)
+    for bg in ("Transparent", "White"):
+        out = f"{ROOT}/render_{tag}_{bg.lower()}.png"
+        v.saveImage(out, w * SCALE, h * SCALE, bg)
+        log("saved", out, os.path.getsize(out))
+    return {"viewport": [w, h], "scale": SCALE, "points": pts, "y_up": y_up}
+
+
+try:
+    open(LOG, "w").close()
+    p = App.ParamGet("User parameter:BaseApp/Preferences/View")
+    p.SetInt("AntiAliasing", 4)
+    p.SetBool("UseNavigationAnimations", False)       # camera moves are animated by default
+    p.SetBool("UseAutoRotation", False)
+    mw = Gui.getMainWindow()
+    mw.setGeometry(0, 0, *JOB["window"])       # no window manager under Xvfb: size the window explicitly;
+    mw.showNormal()                            # the 3D view follows it
+    for dock in ("Combo View", "Report view", "Python console", "Tree view", "Property view", "Selection view"):
+        w = mw.findChild(QtWidgets.QDockWidget, dock)
+        if w:
+            w.hide()
+    settle()
+    man = json.load(open(f"{ROOT}/manifest.json"))
+    log("manifest parts", len(man["parts"]))
+    views = {}
+    ex = build(man, True)
+    ex.saveAs(f"{ROOT}/{ex.Name}.FCStd")
+    log("saved exploded FCStd")
+    asm = build(man, False)
+    asm.saveAs(f"{ROOT}/{asm.Name}.FCStd")
+    log("saved assembled FCStd")
+    for v in JOB["views"]:
+        views[v["name"]] = render(ex if v["exploded"] else asm, man, v["name"], v["direction"], ortho=True)
+    json.dump(views, open(f"{ROOT}/views.json", "w"), indent=1)
+    log("done")
+except Exception:
+    try:
+        log(traceback.format_exc())
+    except Exception:
+        pass
+finally:
+    os._exit(0)                            # always quit, or FreeCAD sits idle under Xvfb until the timeout

@@ -1,0 +1,7 @@
+{
+  "name": "agent-cad-works",
+  "version": "0.1.0",
+  "description": "Design 3D-printed mechanical parts with build123d and prove them: interference sweeps, printability gates, vendor-STEP fit checks, OrcaSlicer slicing, BOMs, FreeCAD exploded views and Blender photoreal renders, driven by the agentcad CLI.",
+  "author": { "name": "Abdul Hagi" },
+  "keywords": ["cad", "build123d", "3d-printing", "freecad", "blender", "mechanical-design"]
+}

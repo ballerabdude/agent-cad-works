@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Design Viewer</title>
+<style>
+:root { --bg:#f6f7f9; --card:#fff; --fg:#1b1d22; --muted:#626a76; --line:#dde1e7; --pass:#1f7a35; --bad:#c0201b; --accent:#e8701a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111317; --card:#1b1e24; --fg:#e8eaee; --muted:#9aa3ae; --line:#2c3139; --pass:#5ccf76; --bad:#ff6b63; } }
+:root[data-theme="dark"] { --bg:#111317; --card:#1b1e24; --fg:#e8eaee; --muted:#9aa3ae; --line:#2c3139; --pass:#5ccf76; --bad:#ff6b63; }
+* { box-sizing:border-box; }
+body { margin:0; font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 16px; }
+header h1 { font-size:17px; margin:0; } header p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+.nav { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; font-size:14px; }
+.nav a { color:var(--accent); text-decoration:none; }
+main { padding:12px 16px 40px; max-width:1100px; margin:0 auto; }
+.grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; padding:10px 12px; }
+.name { font-weight:600; font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+.badge { font-size:11.5px; padding:2px 7px; border-radius:99px; border:1px solid currentColor; margin-right:6px; }
+.PASS { color:var(--pass); } .FAIL { color:var(--bad); font-weight:600; }
+.render { width:100%; border-radius:12px; border:1px solid var(--line); background:#fff; margin-top:12px; }
+#detail { display:none; }
+.back { background:none; border:1px solid var(--line); color:var(--fg); border-radius:8px; padding:6px 12px; font-size:14px; }
+#view3d { width:100%; height:min(62vh,520px); background:linear-gradient(#e9edf2,#cfd6df); border-radius:12px; touch-action:none; position:relative; margin-top:10px; }
+#msg3d { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); pointer-events:none; }
+table { width:100%; border-collapse:collapse; font-size:13.5px; margin:10px 0; }
+th, td { text-align:left; padding:6px; border-bottom:1px solid var(--line); vertical-align:top; } th { color:var(--muted); font-weight:500; width:38%; }
+.files a { margin-right:10px; font-family:ui-monospace,monospace; font-size:12.5px; color:var(--accent); }
+pre { white-space:pre-wrap; font-size:12.5px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Design</h1>
+  <p id="sub"></p>
+  <nav class="nav" id="nav"></nav>
+</header>
+<main>
+  <section id="list">
+    <img class="render" src="renders/assembly.png" alt="Assembly">
+    <h3>Printed parts</h3>
+    <div class="grid" id="grid"></div>
+    <img class="render" src="renders/parts.png" alt="Printed parts">
+    <img class="render" id="details" src="renders/details.png" alt="Details" onerror="this.remove()">
+    <h3>Key numbers</h3><pre id="info"></pre>
+  </section>
+  <section id="detail">
+    <button class="back" onclick="location.hash=''">&larr; Back</button>
+    <h2 id="dname" class="name"></h2>
+    <div id="view3d"><div id="msg3d">loading…</div></div>
+    <table id="stats"></table>
+  </section>
+</main>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+const man = await (await fetch("manifest.json", { cache: "no-store" })).json();
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+document.title = man.title; document.getElementById("title").textContent = man.title;
+document.getElementById("sub").innerHTML = `${man.passed ? '<span class="badge PASS">all checks pass</span>' : '<span class="badge FAIL">checks failing</span>'} Tap a part to view it in 3D.`;
+document.getElementById("nav").innerHTML = man.links.map(l => `<a href="${l.href}">${esc(l.text)}</a>`).join("");
+document.getElementById("info").textContent = JSON.stringify(man.info, null, 1);
+const byName = Object.fromEntries(man.parts.map(p => [p.name, p]));
+document.getElementById("grid").innerHTML = man.parts.map(p => `
+  <div class="card" onclick="location.hash='${p.name}'"><div class="name">${esc(p.name)}</div>
+  <div style="margin-top:6px"><span class="badge ${p.passed ? "PASS" : "FAIL"}">${p.passed ? "PASS" : "FAIL"}</span>
+  <small>${esc(p.print_time || "")} ${p.filament_g ? esc(p.filament_g) + " g" : ""}</small></div></div>`).join("");
+const box = document.getElementById("view3d"), msg = document.getElementById("msg3d");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); box.appendChild(renderer.domElement);
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(35, 1, 0.1, 5000);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(-1, -2, 3); camera.add(dl); scene.add(camera);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.autoRotate = true;
+let mesh = null; const loader = new STLLoader();
+function resize() { const w = box.clientWidth, h = box.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener("resize", resize);
+(function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+function show(p) {
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh = null; }
+  msg.textContent = "loading…";
+  loader.load(p.stl, g => {
+    g.computeVertexNormals(); g.computeBoundingBox();
+    const c = new THREE.Vector3(); g.boundingBox.getCenter(c); g.translate(-c.x, -c.y, -c.z);
+    const s = g.boundingBox.getSize(new THREE.Vector3()).length();
+    mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: p.color || 0xe8701a, roughness: 0.55, side: THREE.DoubleSide }));
+    mesh.rotation.x = -Math.PI / 2; scene.add(mesh);
+    camera.position.set(s * 0.9, s * 0.7, s * 1.1); camera.near = s / 100; camera.far = s * 20; camera.updateProjectionMatrix();
+    controls.target.set(0, 0, 0); controls.update(); msg.textContent = "";
+  }, undefined, () => msg.textContent = "failed to load " + p.stl);
+}
+function route() {
+  const p = byName[decodeURIComponent(location.hash.slice(1))];
+  document.getElementById("list").style.display = p ? "none" : "";
+  document.getElementById("detail").style.display = p ? "block" : "none";
+  if (!p) return;
+  document.getElementById("dname").textContent = p.name;
+  document.getElementById("stats").innerHTML = Object.entries(p.stats).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")
+    + `<tr><th>files</th><td class="files">${p.files.map(f => `<a href="${f}" download>${esc(f)}</a>`).join("")}</td></tr>`;
+  scrollTo(0, 0); resize(); show(p);
+}
+addEventListener("hashchange", route); route();
+</script>
+</body>
+</html>

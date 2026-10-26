@@ -1,0 +1,14 @@
+{
+  "name": "agent-cad-works",
+  "description": "Agent-driven mechanical design: build123d parts proven by interference, printability and vendor-fit gates, with FreeCAD exploded views and Blender renders.",
+  "owner": {
+    "name": "Abdul Hagi"
+  },
+  "plugins": [
+    {
+      "name": "agent-cad-works",
+      "source": "./plugin",
+      "description": "Agent-driven mechanical design with verification gates (build123d, OrcaSlicer, FreeCAD, Blender)."
+    }
+  ]
+}
