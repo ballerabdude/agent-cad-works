@@ -15,7 +15,7 @@ dimensioning anything bought.
 ## 0. Toolchain
 
 ```bash
-agentcad --version || echo "install: uv tool install <path-or-git-url-of-agent-cad-works>"
+agentcad --version || echo "install: uv tool install git+https://github.com/ballerabdude/agent-cad-works"
 agentcad doctor <design-dir>
 ```
 

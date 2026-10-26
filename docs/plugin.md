@@ -6,13 +6,13 @@
 ## Install
 
 ```text
-/plugin install agent-cad-works --marketplace <owner>/agent-cad-works     # Claude Code 2.1.275 or later
+/plugin install agent-cad-works --marketplace ballerabdude/agent-cad-works     # Claude Code 2.1.275 or later
 ```
 
-Or in two steps (any version; a local path works instead of `<owner>/<repo>`):
+Or in two steps (any version; a local path works instead of `ballerabdude/agent-cad-works`):
 
 ```text
-/plugin marketplace add <owner>/agent-cad-works
+/plugin marketplace add ballerabdude/agent-cad-works
 /plugin install agent-cad-works@agent-cad-works
 ```
 

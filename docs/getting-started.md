@@ -5,13 +5,13 @@
 Requirements: Linux or macOS, Python 3.12, [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone <this repo> agent-cad-works && cd agent-cad-works
+git clone https://github.com/ballerabdude/agent-cad-works.git && cd agent-cad-works
 uv sync                      # pinned environment in .venv (build123d 0.13.0, OCCT 8.0.1)
 uv run agentcad --version
 uv run pytest -q             # 16 tests, about 10 s
 ```
 
-To use `agentcad` from anywhere: `uv tool install .` (or `uv tool install git+<repo url>`).
+To use `agentcad` from anywhere: `uv tool install .` (or `uv tool install git+https://github.com/ballerabdude/agent-cad-works`).
 
 ## 2. Tell agentcad where the external tools are
 

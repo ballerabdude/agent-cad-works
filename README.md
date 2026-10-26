@@ -29,7 +29,7 @@ looked fine on paper:
 ## Quick start
 
 ```bash
-git clone <this repo> agent-cad-works && cd agent-cad-works
+git clone https://github.com/ballerabdude/agent-cad-works.git && cd agent-cad-works
 uv sync && uv run pytest -q                 # pinned environment, 16 tests
 uv run agentcad new parts/bracket           # a design file from the template
 uv run agentcad check parts/bracket         # the verification gates; exit code 1 on failure
@@ -44,7 +44,7 @@ renders use OrcaSlicer, FreeCAD and Blender: see [docs/toolchain.md](docs/toolch
 With Claude Code:
 
 ```text
-/plugin install agent-cad-works --marketplace <owner>/agent-cad-works
+/plugin install agent-cad-works --marketplace ballerabdude/agent-cad-works
 ```
 
 Then describe the part you need. See [docs/plugin.md](docs/plugin.md).

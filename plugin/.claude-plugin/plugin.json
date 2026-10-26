@@ -13,5 +13,7 @@
     "freecad",
     "blender",
     "mechanical-design"
-  ]
+  ],
+  "homepage": "https://github.com/ballerabdude/agent-cad-works",
+  "repository": "https://github.com/ballerabdude/agent-cad-works"
 }
