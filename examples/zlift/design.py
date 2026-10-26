@@ -271,6 +271,9 @@ class ZLift(Design):
                   ("RS03 STEP: 8x M4 housing screws align", lambda: self._vendor_housing_holes(step)),
                   ("RS03 STEP: hub dowels align (with control)", lambda: self._vendor_hub(step, "pins")),
                   ("RS03 STEP: hub M4 screws align (with control)", lambda: self._vendor_hub(step, "screws"))]
+        else:      # say so loudly: a mount that was never checked against the real part is not verified
+            c.append(("RS03 STEP not found: 4 vendor-fit checks SKIPPED (put it in vendor/robstride/RS03.stp)",
+                      lambda: CheckResult("vendor fit", True, {"skipped": True})))
         return c
 
     def _over_travel_detected(self):
